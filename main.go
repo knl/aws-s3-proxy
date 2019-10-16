@@ -32,6 +32,7 @@ type config struct { // nolint
 	indexDocument    string // INDEX_DOCUMENT
 	directoryListing bool   // DIRECTORY_LISTINGS
 	dirListingFormat string // DIRECTORY_LISTINGS_FORMAT
+	dirListingStyle  string // DIRECTORY_LISTINGS_STYLE
 	httpCacheControl string // HTTP_CACHE_CONTROL (max-age=86400, no-cache ...)
 	httpExpires      string // HTTP_EXPIRES (Thu, 01 Dec 1994 16:00:00 GMT ...)
 	basicAuthUser    string // BASIC_AUTH_USER
@@ -117,6 +118,10 @@ func configFromEnvironmentVariables() *config {
 	if b, err := strconv.ParseBool(os.Getenv("DIRECTORY_LISTINGS")); err == nil {
 		directoryListings = b
 	}
+	directoryListingsStyle := os.Getenv("DIRECTORY_LISTINGS_STYLE")
+	if len(directoryListingsStyle) != 0 {
+		directoryListingsStyle = "<head><link rel=\"stylesheet\" href=\"" + directoryListingsStyle + "\" type=\"text/css\"></head>"
+	}
 	accessLog := false
 	if b, err := strconv.ParseBool(os.Getenv("ACCESS_LOG")); err == nil {
 		accessLog = b
@@ -141,6 +146,7 @@ func configFromEnvironmentVariables() *config {
 		indexDocument:    indexDocument,
 		directoryListing: directoryListings,
 		dirListingFormat: os.Getenv("DIRECTORY_LISTINGS_FORMAT"),
+		dirListingStyle:  directoryListingsStyle,
 		httpCacheControl: os.Getenv("HTTP_CACHE_CONTROL"),
 		httpExpires:      os.Getenv("HTTP_EXPIRES"),
 		basicAuthUser:    os.Getenv("BASIC_AUTH_USER"),
@@ -477,13 +483,13 @@ func s3listFiles(w http.ResponseWriter, r *http.Request, backet, key string) {
 
 	if strings.ToLower(c.dirListingFormat) == "html" {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		html := "<!DOCTYPE html><html><body><ul>"
+		html := "<!DOCTYPE html><html>" + c.dirListingStyle + "<body><ul>\n"
 		for _, file := range files {
-			html += "<li><a href=\"" + file + "\">" + file + "</a>"
+			html += "<li class=\"item\"><a class=\"item-name\" href=\"" + file + "\">" + file + "</a>"
 			if len(updatedAt) != 0 {
-				html += " " + updatedAt[file].String()
+				html += " <time class=\"item-date\">" + updatedAt[file].String() + "</time>"
 			}
-			html += "</li>"
+			html += "</li>\n"
 		}
 		html += "</ul></body></html>"
 		fmt.Fprintln(w, html)
