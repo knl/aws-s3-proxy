@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"compress/gzip"
 	"compress/zlib"
 	"encoding/json"
@@ -302,24 +301,6 @@ func awss3(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idx := strings.Index(path, "symlink.json")
-	if idx > -1 {
-		result, err := s3get(c.s3Bucket, c.s3KeyPrefix+path[:idx+12], rangeHeader)
-		if err != nil {
-			code, message := awsError(err)
-			http.Error(w, message, code)
-			return
-		}
-		var link symlink
-		buf := new(bytes.Buffer)
-		buf.ReadFrom(result.Body) // nolint
-		err = json.Unmarshal(buf.Bytes(), &link)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		path = link.URL + path[idx+12:]
-	}
 	if strings.HasSuffix(path, "/") {
 		if c.directoryListing {
 			s3listFiles(w, r, c.s3Bucket, c.s3KeyPrefix+path)
@@ -333,6 +314,20 @@ func awss3(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, message, code)
 		return
 	}
+	// Check if the object is a symlink
+	// We define a symlink as object which has metadata key 'RedirectsTo' with
+	// a value of object name it redirects to. The object name it redirects to
+	// is the absolute name, that is, we don't use s3KeyPrefix
+	meta := obj.Metadata
+	if linkpath, ok := meta["Redirects-To"]; ok {
+		obj, err = s3get(c.s3Bucket, *linkpath, rangeHeader)
+		if err != nil {
+			code, message := awsError(err)
+			http.Error(w, message, code)
+			return
+		}
+	}
+
 	setHeadersFromAwsResponse(w, obj)
 
 	io.Copy(w, obj.Body) // nolint
